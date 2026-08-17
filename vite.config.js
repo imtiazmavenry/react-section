@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const shortcode = process.env.MSC_SHORTCODE || "shortcode";
 
 export default defineConfig({
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -17,15 +18,18 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    emptyOutDir: true,
+    // Do not let Vite empty dist/. The shortcode CLI removes only the
+    // shortcode directory currently being rebuilt.
+    emptyOutDir: false,
     rollupOptions: {
+      input: path.resolve(__dirname, "./src/main.jsx"),
       output: {
-        entryFileNames: `${shortcode}.js`,
-        chunkFileNames: `${shortcode}-[name].js`,
+        entryFileNames: `${shortcode}/app.js`,
+        chunkFileNames: `${shortcode}/app-[name].js`,
         assetFileNames: (assetInfo) => {
           const ext = path.extname(assetInfo.name || "").toLowerCase();
-          if (ext === ".css") return `${shortcode}.css`;
-          return `${shortcode}-[name][extname]`;
+          if (ext === ".css") return `${shortcode}/app.css`;
+          return `${shortcode}/app-[name][extname]`;
         },
       },
     },

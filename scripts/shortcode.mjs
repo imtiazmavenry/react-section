@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+const DEFAULT_BASE_URL = "http://localhost/araw/reactgit/react-section/";
+
 const shortcode = process.argv[2];
 const requestedExport = process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : null;
 
@@ -95,8 +97,54 @@ console.log(`Entry: ${path.relative(root, entry)}`);
 console.log(`Component export: ${exportName}${requestedExport ? " (requested)" : " (first export automatically selected)"}`);
 console.log(`Mount selector: [data-msc-shortcode="${shortcode}"]`);
 console.log(`Attribute: data-msc-shortcode="${shortcode}"`);
-console.log(`Build output: dist/${shortcode}.js + dist/${shortcode}.css`);
+console.log(`Build output: dist/${shortcode}/app.js + dist/${shortcode}/app.css`);
 
 if (process.argv.includes("--build")) {
-  execSync("pnpm build", { cwd: root, stdio: "inherit", env: { ...process.env, MSC_SHORTCODE: shortcode } });
+  // Each shortcode owns only its own directory inside dist/.
+  // Building gallery must never remove testimonial, and vice versa.
+  const shortcodeDist = path.join(root, "dist", shortcode);
+
+  if (fs.existsSync(shortcodeDist)) {
+    fs.rmSync(shortcodeDist, { recursive: true, force: true });
+  }
+
+  execSync("pnpm build", {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      MSC_SHORTCODE: shortcode,
+      MSC_BASE_URL: process.env.MSC_BASE_URL || DEFAULT_BASE_URL,
+    },
+  });
+
+  // Keep a manifest for every shortcode currently present in dist/.
+  // The newly built shortcode is inserted first. Existing shortcode entries
+  // are preserved and are not removed when another shortcode is rebuilt.
+  const distDir = path.join(root, "dist");
+  const baseUrl = (process.env.MSC_BASE_URL || DEFAULT_BASE_URL).replace(/\/?$/, "/");
+  const manifestPath = path.join(distDir, "links.json");
+
+  const folders = fs.readdirSync(distDir, { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name);
+
+  const entryFor = (name) => ({
+    shortcode: name,
+    js: `${baseUrl}dist/${name}/app.js`,
+    css: `${baseUrl}dist/${name}/app.css`,
+    script: `<script type="module" src="${baseUrl}dist/${name}/app.js"></script>`,
+    stylesheet: `<link rel="stylesheet" href="${baseUrl}dist/${name}/app.css">`,
+  });
+
+  const manifest = [
+    entryFor(shortcode),
+    ...folders
+      .filter((name) => name !== shortcode)
+      .sort()
+      .map(entryFor),
+  ];
+
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`Links manifest: ${path.relative(root, manifestPath)}`);
 }
